@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flight Plan — Autonomous Mission Planner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#0C1418;
+    --panel:#101B21;
+    --panel-alt:#17262E;
+    --line:#233640;
+    --route:#4FD1C5;
+    --waypoint:#F5A623;
+    --home:#FF6B6B;
+    --text:#E8F0F2;
+    --muted:#7C93A0;
+    --success:#6BCB77;
+    --danger:#E85D5D;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--bg-deep);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    overflow:hidden;
+  }
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif;margin:0;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- Top bar ---------- */
+  #topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 22px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#121F26,#0F1A20);
+    flex-shrink:0;
+  }
+  #topbar .brand{display:flex;align-items:center;gap:12px;}
+  #topbar .brand .mark{
+    width:34px;height:34px;border-radius:8px;
+    background:conic-gradient(from 220deg, var(--route), var(--waypoint), var(--route));
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;
+  }
+  #topbar h1{font-size:17px;letter-spacing:0.2px;}
+  #topbar .sub{color:var(--muted);font-size:12.5px;margin-top:2px;}
+  #helpBtn{
+    background:transparent;border:1px solid var(--line);color:var(--muted);
+    padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-family:inherit;
+  }
+  #helpBtn:hover{border-color:var(--route);color:var(--text);}
+
+  /* ---------- Main layout ---------- */
+  #main{flex:1;display:flex;min-height:0;}
+  #panel{
+    width:340px;flex-shrink:0;
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    display:flex;flex-direction:column;
+    overflow-y:auto;
+  }
+  #panel::-webkit-scrollbar{width:8px;}
+  #panel::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+
+  .section{padding:18px 18px;border-bottom:1px solid var(--line);}
+  .section h2{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:12px;font-family:'Inter',sans-serif;}
+
+  .field{margin-bottom:10px;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;}
+  .field input, .field select{
+    width:100%;padding:9px 10px;background:var(--panel-alt);
+    border:1px solid var(--line);border-radius:6px;color:var(--text);
+    font-family:'IBM Plex Mono',monospace;font-size:13px;
+  }
+  .field input:focus,.field select:focus{outline:none;border-color:var(--route);}
+  .row2{display:flex;gap:8px;}
+  .row2 .field{flex:1;}
+
+  #searchWrap{position:relative;}
+  #searchResults{
+    position:absolute;top:100%;left:0;right:0;
+    background:var(--panel-alt);border:1px solid var(--line);border-top:none;
+    border-radius:0 0 6px 6px;max-height:180px;overflow-y:auto;z-index:50;
+  }
+  #searchResults div{padding:8px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--line);}
+  #searchResults div:last-child{border-bottom:none;}
+  #searchResults div:hover{background:var(--line);}
+
+  button.primary{
+    width:100%;padding:11px;border:none;border-radius:7px;
+    background:var(--route);color:#08171A;font-weight:600;font-size:13.5px;
+    cursor:pointer;font-family:'Inter',sans-serif;
+  }
+  button.primary:hover{filter:brightness(1.08);}
+  button.primary:disabled{opacity:0.4;cursor:not-allowed;}
+  button.ghost{
+    width:100%;padding:10px;border:1px solid var(--line);border-radius:7px;
+    background:transparent;color:var(--text);font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;
+    margin-top:8px;
+  }
+  button.ghost:hover{border-color:var(--muted);}
+  button.ghost:disabled{opacity:0.35;cursor:not-allowed;}
+  button.small{
+    border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 6px;
+  }
+  button.small:hover{color:var(--danger);}
+  button.danger-outline{
+    width:100%;padding:10px;border:1px solid var(--danger);border-radius:7px;
+    background:transparent;color:var(--danger);font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;
+    margin-top:8px;font-weight:600;
+  }
+  button.danger-outline:disabled{opacity:0.3;cursor:not-allowed;border-color:var(--line);color:var(--muted);}
+
+  .hint{font-size:12px;color:var(--muted);line-height:1.5;margin-top:8px;}
+
+  /* Waypoint list */
+  #wpList{list-style:none;margin:0;padding:0;}
+  #wpList li{
+    display:flex;align-items:center;gap:8px;
+    background:var(--panel-alt);border:1px solid var(--line);border-radius:7px;
+    padding:9px 10px;margin-bottom:7px;
+  }
+  #wpList li .badge{
+    width:22px;height:22px;border-radius:50%;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;
+    background:var(--waypoint);color:#231400;
+  }
+  #wpList li.home-item .badge{background:var(--home);color:#2A0606;}
+  #wpList li .meta{flex:1;min-width:0;}
+  #wpList li .meta .coord{font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #wpList li .meta .alt{font-size:11px;color:var(--muted);}
+  #wpList li input.altInput{
+    width:56px;padding:4px 6px;font-size:11px;background:var(--panel);
+    border:1px solid var(--line);border-radius:4px;color:var(--text);font-family:'IBM Plex Mono',monospace;
+  }
+  #emptyState{color:var(--muted);font-size:12.5px;text-align:center;padding:18px 6px;border:1px dashed var(--line);border-radius:8px;}
+
+  /* ---------- Map ---------- */
+  #mapWrap{flex:1;position:relative;}
+  #map{width:100%;height:100%;background:#0d171c;}
+  .leaflet-control-zoom{border:none !important;}
+  .leaflet-control-zoom a{background:var(--panel) !important;color:var(--text) !important;border-color:var(--line) !important;}
+
+  #mapHint{
+    position:absolute;top:14px;left:14px;z-index:400;
+    background:rgba(16,27,33,0.9);border:1px solid var(--line);
+    padding:8px 12px;border-radius:7px;font-size:12px;color:var(--muted);
+    backdrop-filter:blur(4px);
+  }
+
+  /* ---------- FC connection panel ---------- */
+  .fc-status{
+    display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:7px;
+    background:var(--panel-alt);border:1px solid var(--line);font-size:12.5px;margin-bottom:10px;
+  }
+  .fc-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+  .fc-dot.connecting{background:var(--waypoint);box-shadow:0 0 0 0 var(--waypoint);animation:pulse 1s infinite;}
+  .fc-dot.connected{background:var(--success);}
+  .fc-dot.error{background:var(--danger);}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(245,166,35,0.6);}70%{box-shadow:0 0 0 7px rgba(245,166,35,0);}100%{box-shadow:0 0 0 0 rgba(245,166,35,0);}}
+  #fcStatusText{color:var(--text);}
+  #fcStatusSub{color:var(--muted);font-size:11px;}
+
+  .safety-box{
+    background:rgba(232,93,93,0.08);border:1px solid rgba(232,93,93,0.35);
+    border-radius:7px;padding:10px 11px;margin-top:10px;font-size:12px;color:#F0B8B8;line-height:1.5;
+  }
+  .safety-box label{display:flex;gap:8px;align-items:flex-start;color:#F0D8D8;font-size:12px;margin-top:6px;cursor:pointer;}
+  .safety-box input[type=checkbox]{margin-top:2px;}
+
+  .unsupported-box{
+    background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.35);
+    border-radius:7px;padding:10px 11px;font-size:12px;color:#EBD3A6;line-height:1.55;
+  }
+
+  /* ---------- Telemetry strip ---------- */
+  #telemetry{
+    height:86px;flex-shrink:0;
+    background:linear-gradient(180deg,#0F1A20,#0B1418);
+    border-top:1px solid var(--line);
+    display:flex;align-items:stretch;position:relative;
+  }
+  #telModeLabel{
+    position:absolute;top:4px;left:10px;font-size:9.5px;letter-spacing:0.8px;color:var(--muted);
+    text-transform:uppercase;font-family:'IBM Plex Mono',monospace;
+  }
+  #telModeLabel.live{color:var(--success);}
+  .telbox{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border-right:1px solid var(--line);gap:4px;
+  }
+  .telbox:last-child{border-right:none;}
+  .telbox .val{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:var(--route);}
+  .telbox .lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;}
+  #flightControls{
+    flex:1.6;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;flex-wrap:wrap;
+  }
+  #flightControls button{
+    padding:9px 15px;border-radius:7px;border:none;font-weight:600;font-size:12.5px;cursor:pointer;font-family:'Inter',sans-serif;
+  }
+  #simBtn{background:var(--success);color:#052B0A;}
+  #simBtn:disabled{opacity:0.4;cursor:not-allowed;}
+  #stopBtn{background:transparent;border:1px solid var(--line) !important;color:var(--muted);}
+  #exportBtn{background:var(--waypoint);color:#2A1900;}
+
+  /* ---------- Help modal ---------- */
+  #helpOverlay{
+    display:none;position:fixed;inset:0;background:rgba(6,10,13,0.75);
+    z-index:1000;align-items:center;justify-content:center;
+  }
+  #helpOverlay.show{display:flex;}
+  #helpCard{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    max-width:560px;width:90%;max-height:82vh;overflow-y:auto;padding:26px 28px;
+  }
+  #helpCard h2{font-size:19px;margin-bottom:14px;}
+  #helpCard h3{font-size:14px;margin:16px 0 6px;color:var(--waypoint);}
+  #helpCard p, #helpCard li{font-size:13.5px;color:#C7D6DB;line-height:1.6;}
+  #helpCard ol,#helpCard ul{padding-left:20px;margin:10px 0;}
+  #helpCard .step-title{color:var(--waypoint);font-weight:600;}
+  #helpCard button{margin-top:16px;}
+
+  @media (max-width:820px){
+    #panel{width:270px;}
+    .telbox .val{font-size:16px;}
+    #flightControls button{padding:8px 10px;font-size:11px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="brand">
+    <div class="mark">🛰️</div>
+    <div>
+      <h1>Flight Plan</h1>
+      <div class="sub">Autonomous drone mission planner — beginner mode</div>
+    </div>
+  </div>
+  <button id="helpBtn">How this works</button>
+</div>
+
+<div id="main">
+  <div id="panel">
+
+    <div class="section">
+      <h2>1 · Search a location</h2>
+      <div id="searchWrap">
+        <div class="field">
+          <label>Type a place name</label>
+          <input type="text" id="searchInput" placeholder="e.g. Surat Airport, Gujarat">
+          <div id="searchResults"></div>
+        </div>
+      </div>
+      <div class="hint">Search moves the map there. Click anywhere on the map to drop a waypoint — you never need to type coordinates by hand.</div>
+    </div>
+
+    <div class="section">
+      <h2>2 · Mission settings</h2>
+      <div class="row2">
+        <div class="field">
+          <label>Cruise altitude (m)</label>
+          <input type="number" id="defaultAlt" value="30" min="1" max="500">
+        </div>
+        <div class="field">
+          <label>Speed (m/s)</label>
+          <input type="number" id="defaultSpeed" value="8" min="1" max="30">
+        </div>
+      </div>
+      <div class="field">
+        <label>Mission name</label>
+        <input type="text" id="missionName" value="My First Mission">
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>3 · Waypoints (<span id="wpCount">0</span>)</h2>
+      <div id="wpListWrap">
+        <div id="emptyState">No waypoints yet.<br>Click on the map to add your first one — that becomes the home / launch point.</div>
+        <ul id="wpList"></ul>
+      </div>
+      <button class="ghost" id="clearBtn">Clear all waypoints</button>
+    </div>
+
+    <div class="section" id="fcSection">
+      <h2>4 · Flight controller (ArduPilot)</h2>
+
+      <div id="fcUnsupported" class="unsupported-box" style="display:none;">
+        Your browser doesn't expose the Web Serial API needed to talk to real hardware over USB. Download this file and open it directly in <strong>Chrome or Edge on a desktop computer</strong> connected to your flight controller, rather than viewing it inside this chat window.
+      </div>
+
+      <div id="fcConnectedUI" style="display:none;">
+        <div class="fc-status">
+          <div class="fc-dot" id="fcDot"></div>
+          <div style="flex:1;">
+            <div id="fcStatusText">Not connected</div>
+            <div id="fcStatusSub">No flight controller detected</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Vehicle type (sets AUTO mode number)</label>
+          <select id="vehicleType">
+            <option value="copter">Copter / Multirotor (ArduCopter)</option>
+            <option value="plane">Fixed-wing (ArduPlane)</option>
+            <option value="rover">Ground rover (ArduRover)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Baud rate</label>
+          <select id="baudRate">
+            <option value="57600">57600 (telemetry radio)</option>
+            <option value="115200" selected>115200 (USB)</option>
+            <option value="921600">921600 (fast USB link)</option>
+          </select>
+        </div>
+
+        <button class="primary" id="connectBtn">🔌 Connect over USB</button>
+        <button class="ghost" id="disconnectBtn" disabled>Disconnect</button>
+
+        <button class="ghost" id="uploadMissionBtn" disabled style="margin-top:14px;">⬆ Upload mission to flight controller</button>
+        <div id="uploadStatus" class="hint"></div>
+
+        <div class="safety-box">
+          <strong>Before arming a real drone:</strong> propellers clear of people, open outdoor area, GPS lock confirmed, and you are ready to take manual control at any time.
+          <label><input type="checkbox" id="safetyCheck"> I've checked the above and I'm ready to arm</label>
+        </div>
+        <button class="danger-outline" id="armBtn" disabled style="margin-top:8px;">⚠ Arm & start mission (AUTO)</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="mapWrap">
+    <div id="map"></div>
+    <div id="mapHint">Click the map to add a waypoint</div>
+  </div>
+</div>
+
+<div id="telemetry">
+  <div id="telModeLabel">Simulated</div>
+  <div class="telbox"><div class="val mono" id="telAlt">0</div><div class="lbl">Altitude m</div></div>
+  <div class="telbox"><div class="val mono" id="telSpeed">0</div><div class="lbl">Speed m/s</div></div>
+  <div class="telbox"><div class="val mono" id="telDist">0</div><div class="lbl">Dist left m</div></div>
+  <div class="telbox"><div class="val mono" id="telEta">--:--</div><div class="lbl">ETA</div></div>
+  <div class="telbox"><div class="val mono" id="telBatt">100%</div><div class="lbl">Battery est.</div></div>
+  <div id="flightControls">
+    <button id="simBtn" disabled>▶ Simulate</button>
+    <button id="stopBtn" disabled>■ Stop</button>
+    <button id="exportBtn" disabled>⭳ Export .waypoints</button>
+  </div>
+</div>
+
+<div id="helpOverlay">
+  <div id="helpCard">
+    <h2>How this planner works</h2>
+    <p>This tool lets you build an autonomous flight route without touching any code or GPS coordinates by hand, and — if you're on a desktop Chrome/Edge browser with a flight controller plugged in — send it straight to real ArduPilot hardware.</p>
+    <h3>Plan a mission</h3>
+    <ol>
+      <li><span class="step-title">Find your location.</span> Type a place name and the map flies there — no manual latitude/longitude entry.</li>
+      <li><span class="step-title">Draw the route.</span> Click on the map to drop waypoints in order. The first click becomes the home / take-off point automatically.</li>
+      <li><span class="step-title">Set altitude & speed.</span> One cruise altitude and speed apply to the whole mission — per-waypoint altitude is adjustable in the list on the left.</li>
+      <li><span class="step-title">Simulate.</span> Press "Simulate" to preview the flight with live telemetry, all in the browser — no hardware needed.</li>
+    </ol>
+    <h3>Connect to a real ArduPilot flight controller</h3>
+    <p>Section 4 in the side panel talks directly to your flight controller using <strong>MAVLink</strong> — the same open-source protocol that Mission Planner and QGroundControl use — over the Web Serial API built into Chrome/Edge.</p>
+    <ol>
+      <li>Plug your Pixhawk / other ArduPilot board into this computer over USB.</li>
+      <li>Pick your vehicle type and baud rate, then click <strong>Connect over USB</strong> and choose the correct port in the browser prompt.</li>
+      <li>Once connected (heartbeat detected), click <strong>Upload mission to flight controller</strong> — this sends your waypoints using the standard MAVLink mission protocol.</li>
+      <li>Only when you've physically checked the aircraft is safe, tick the safety box and use <strong>Arm & start mission</strong>, which arms the vehicle and switches it into AUTO mode.</li>
+    </ol>
+    <p><strong>Notes:</strong> Web Serial only works in Chromium browsers, needs a real USB connection, and generally needs to run as a normal page rather than embedded inside another site — if the Connect button doesn't do anything here, download the file and open it directly in Chrome. Always test with propellers off first, keep a manual RC override ready, and follow your local drone regulations.</p>
+    <button class="primary" id="closeHelp">Got it</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+(function(){
+  // =========================================================
+  // Mission planning state (map, waypoints, simulation, export)
+  // =========================================================
+  let waypoints = []; // {lat, lng, alt}
+  let markers = [];
+  let routeLine = null;
+  let simRAF = null;
+  let simRunning = false;
+  let liveMode = false; // true when telemetry is coming from a real FC
+
+  const map = L.map('map', {zoomControl:true}).setView([21.1702, 72.8311], 12); // Surat default
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap contributors',
+    maxZoom:19
+  }).addTo(map);
+
+  const waypointIcon = (n, isHome) => L.divIcon({
+    className:'',
+    html:`<div style="
+      width:26px;height:26px;border-radius:50%;
+      background:${isHome ? '#FF6B6B' : '#F5A623'};
+      display:flex;align-items:center;justify-content:center;
+      font:600 11px 'IBM Plex Mono',monospace;color:${isHome?'#2A0606':'#231400'};
+      border:2px solid #0C1418;box-shadow:0 2px 6px rgba(0,0,0,0.5);
+    ">${isHome ? 'H' : n}</div>`,
+    iconSize:[26,26], iconAnchor:[13,13]
+  });
+
+  map.on('click', (e) => addWaypoint(e.latlng.lat, e.latlng.lng));
+
+  function addWaypoint(lat, lng){
+    const defAlt = parseFloat(document.getElementById('defaultAlt').value) || 30;
+    waypoints.push({lat, lng, alt: defAlt});
+    renderAll();
+  }
+  function removeWaypoint(idx){ waypoints.splice(idx,1); renderAll(); }
+
+  function renderAll(){
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+
+    waypoints.forEach((wp, i) => {
+      const marker = L.marker([wp.lat, wp.lng], {icon: waypointIcon(i+1, i===0), draggable:true});
+      marker.on('dragend', (ev) => {
+        const pos = ev.target.getLatLng();
+        waypoints[i].lat = pos.lat;
+        waypoints[i].lng = pos.lng;
+        renderAll();
+      });
+      marker.addTo(map);
+      markers.push(marker);
+    });
+
+    if (waypoints.length > 1){
+      routeLine = L.polyline(waypoints.map(w=>[w.lat,w.lng]), {
+        color:'#4FD1C5', weight:3, opacity:0.85, dashArray:'6 6'
+      }).addTo(map);
+    }
+    renderList();
+    updateButtons();
+  }
+
+  function renderList(){
+    const list = document.getElementById('wpList');
+    const empty = document.getElementById('emptyState');
+    document.getElementById('wpCount').textContent = waypoints.length;
+    list.innerHTML = '';
+    if (waypoints.length === 0){ empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    waypoints.forEach((wp, i) => {
+      const li = document.createElement('li');
+      if (i===0) li.classList.add('home-item');
+      li.innerHTML = `
+        <div class="badge">${i===0 ? 'H' : i+1}</div>
+        <div class="meta">
+          <div class="coord">${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)}</div>
+          <div class="alt">${i===0 ? 'Home / launch point' : 'Waypoint ' + (i+1)}</div>
+        </div>
+        <input class="altInput" type="number" value="${wp.alt}" min="1" max="500" title="Altitude (m)">
+        <button class="small" title="Remove">✕</button>
+      `;
+      li.querySelector('.altInput').addEventListener('change', (e) => {
+        waypoints[i].alt = parseFloat(e.target.value) || 0;
+      });
+      li.querySelector('button.small').addEventListener('click', () => removeWaypoint(i));
+      list.appendChild(li);
+    });
+  }
+
+  function updateButtons(){
+    const has2 = waypoints.length >= 2;
+    document.getElementById('simBtn').disabled = !has2 || simRunning;
+    document.getElementById('exportBtn').disabled = waypoints.length < 1;
+    document.getElementById('uploadMissionBtn').disabled = waypoints.length < 1 || !mav.connected;
+  }
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    stopSim();
+    waypoints = [];
+    renderAll();
+  });
+
+  // ---------- Search (Nominatim) ----------
+  const searchInput = document.getElementById('searchInput');
+  const searchResults = document.getElementById('searchResults');
+  let searchTimer = null;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = searchInput.value.trim();
+    if (q.length < 3){ searchResults.innerHTML=''; return; }
+    searchTimer = setTimeout(() => doSearch(q), 450);
+  });
+  function doSearch(q){
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then(results => {
+        searchResults.innerHTML = '';
+        if (!results.length){ searchResults.innerHTML = '<div style="color:#7C93A0;">No matches found</div>'; return; }
+        results.forEach(r => {
+          const div = document.createElement('div');
+          div.textContent = r.display_name;
+          div.addEventListener('click', () => {
+            map.setView([parseFloat(r.lat), parseFloat(r.lon)], 15);
+            searchResults.innerHTML = '';
+            searchInput.value = r.display_name.split(',')[0];
+          });
+          searchResults.appendChild(div);
+        });
+      })
+      .catch(() => { searchResults.innerHTML = '<div style="color:#E85D5D;">Search unavailable — try clicking the map directly.</div>'; });
+  }
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('searchWrap').contains(e.target)) searchResults.innerHTML = '';
+  });
+
+  function dist(a,b){
+    const R=6371000, toRad=d=>d*Math.PI/180;
+    const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
+    const s=Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+    return 2*R*Math.asin(Math.sqrt(s));
+  }
+
+  // ---------- Simulation (used when NOT connected to a real FC) ----------
+  const simBtn = document.getElementById('simBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  simBtn.addEventListener('click', startSim);
+  stopBtn.addEventListener('click', stopSim);
+
+  function startSim(){
+    if (waypoints.length < 2 || simRunning || liveMode) return;
+    simRunning = true;
+    simBtn.disabled = true; stopBtn.disabled = false;
+    setTelModeLabel(false);
+
+    const speed = parseFloat(document.getElementById('defaultSpeed').value) || 8;
+    const segLens = []; let totalLen = 0;
+    for (let i=0;i<waypoints.length-1;i++){ const d = dist(waypoints[i], waypoints[i+1]); segLens.push(d); totalLen += d; }
+
+    let droneM = L.marker([waypoints[0].lat, waypoints[0].lng], {
+      icon: L.divIcon({className:'', html:`<div style="font-size:22px;">🛸</div>`, iconSize:[26,26], iconAnchor:[13,13]})
+    }).addTo(map);
+
+    const startTime = performance.now();
+    function frame(now){
+      if (!simRunning) return;
+      const traveled = speed * (now - startTime)/1000;
+      if (traveled >= totalLen){
+        droneM.setLatLng([waypoints[waypoints.length-1].lat, waypoints[waypoints.length-1].lng]);
+        setTel({alt:0, speed:0, dist:0, eta:'00:00', batt:document.getElementById('telBatt').textContent});
+        finishSim();
+        return;
+      }
+      let acc = 0, segIdx = 0;
+      for (; segIdx < segLens.length; segIdx++){ if (acc + segLens[segIdx] >= traveled) break; acc += segLens[segIdx]; }
+      const segStart = waypoints[segIdx], segEnd = waypoints[segIdx+1] || waypoints[segIdx];
+      const segProgress = segLens[segIdx] ? (traveled - acc) / segLens[segIdx] : 0;
+      const lat = segStart.lat + (segEnd.lat - segStart.lat) * segProgress;
+      const lng = segStart.lng + (segEnd.lng - segStart.lng) * segProgress;
+      droneM.setLatLng([lat, lng]);
+      const alt = segStart.alt + (segEnd.alt - segStart.alt) * segProgress;
+      const remaining = totalLen - traveled;
+      const battery = Math.max(0, 100 - (traveled/totalLen)*35);
+      setTel({alt: alt.toFixed(0), speed: speed.toFixed(1), dist: remaining.toFixed(0), eta: fmtTime(remaining/speed), batt: battery.toFixed(0)+'%'});
+      simRAF = requestAnimationFrame(frame);
+    }
+    simRAF = requestAnimationFrame(frame);
+  }
+  function finishSim(){ simRunning = false; simBtn.disabled = false; stopBtn.disabled = true; updateButtons(); }
+  function stopSim(){
+    simRunning = false;
+    if (simRAF) cancelAnimationFrame(simRAF);
+    simBtn.disabled = false; stopBtn.disabled = true;
+    if (!liveMode) setTel({alt:0,speed:0,dist:0,eta:'--:--',batt:'100%'});
+    updateButtons();
+  }
+  function fmtTime(sec){ sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec/60), s = sec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
+  function setTel({alt,speed,dist,eta,batt}){
+    if (alt!==undefined) document.getElementById('telAlt').textContent = alt;
+    if (speed!==undefined) document.getElementById('telSpeed').textContent = speed;
+    if (dist!==undefined) document.getElementById('telDist').textContent = dist;
+    if (eta!==undefined) document.getElementById('telEta').textContent = eta;
+    if (batt!==undefined) document.getElementById('telBatt').textContent = batt;
+  }
+  function setTelModeLabel(isLive){
+    liveMode = isLive;
+    const el = document.getElementById('telModeLabel');
+    el.textContent = isLive ? 'Live (FC)' : 'Simulated';
+    el.classList.toggle('live', isLive);
+  }
+
+  // ---------- Export mission (QGC WPL 110 format) ----------
+  function buildWplLines(){
+    const lines = ['QGC WPL 110'];
+    const home = waypoints[0];
+    lines.push(`0\t1\t0\t16\t0\t0\t0\t0\t${home.lat.toFixed(7)}\t${home.lng.toFixed(7)}\t${home.alt.toFixed(2)}\t1`);
+    for (let i=1;i<waypoints.length;i++){
+      const wp = waypoints[i];
+      lines.push(`${i}\t0\t3\t16\t0\t0\t0\t0\t${wp.lat.toFixed(7)}\t${wp.lng.toFixed(7)}\t${wp.alt.toFixed(2)}\t1`);
+    }
+    return lines.join('\n') + '\n';
+  }
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    if (waypoints.length < 1) return;
+    const content = buildWplLines();
+    const blob = new Blob([content], {type:'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const name = (document.getElementById('missionName').value || 'mission').trim().replace(/\s+/g,'_');
+    a.href = url; a.download = name + '.waypoints';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  // ---------- Help modal ----------
+  const helpOverlay = document.getElementById('helpOverlay');
+  document.getElementById('helpBtn').addEventListener('click', () => helpOverlay.classList.add('show'));
+  document.getElementById('closeHelp').addEventListener('click', () => helpOverlay.classList.remove('show'));
+  helpOverlay.addEventListener('click', (e) => { if (e.target === helpOverlay) helpOverlay.classList.remove('show'); });
+  window.addEventListener('load', () => setTimeout(() => helpOverlay.classList.add('show'), 400));
+
+  // =========================================================
+  // MAVLink / ArduPilot connection over Web Serial
+  // This talks the same open-source MAVLink protocol used by
+  // Mission Planner / QGroundControl / MAVProxy.
+  // =========================================================
+  const CRC_EXTRA = {0:50, 11:89, 21:159, 33:104, 39:254, 40:230, 41:28, 42:28, 43:132, 44:221, 45:232, 46:11, 47:153, 62:200, 74:20, 76:152, 77:143, 253:83};
+  const AUTO_MODE = {copter:3, plane:10, rover:10};
+
+  function x25crc(buf){
+    let crc = 0xFFFF;
+    for (let i=0;i<buf.length;i++){
+      let tmp = buf[i] ^ (crc & 0xFF);
+      tmp = (tmp ^ (tmp<<4)) & 0xFF;
+      crc = ((crc>>8) ^ (tmp<<8) ^ (tmp<<3) ^ (tmp>>4)) & 0xFFFF;
+    }
+    return crc;
+  }
+
+  function packMavlink(msgid, payload, seq, sysid, compid){
+    const crcExtra = CRC_EXTRA[msgid];
+    const header = new Uint8Array([0xFE, payload.length, seq & 0xFF, sysid, compid, msgid]);
+    const forCrc = new Uint8Array(header.length - 1 + payload.length + 1);
+    forCrc.set(header.subarray(1), 0);
+    forCrc.set(payload, header.length - 1);
+    forCrc[forCrc.length-1] = crcExtra;
+    const crc = x25crc(forCrc);
+    const packet = new Uint8Array(header.length + payload.length + 2);
+    packet.set(header, 0);
+    packet.set(payload, header.length);
+    packet[packet.length-2] = crc & 0xFF;
+    packet[packet.length-1] = (crc>>8) & 0xFF;
+    return packet;
+  }
+
+  function encHeartbeat(){
+    const b = new ArrayBuffer(9); const v = new DataView(b);
+    v.setUint32(0, 0, true); // custom_mode
+    v.setUint8(4, 6);  // type = MAV_TYPE_GCS
+    v.setUint8(5, 8);  // autopilot = MAV_AUTOPILOT_INVALID
+    v.setUint8(6, 0);  // base_mode
+    v.setUint8(7, 4);  // system_status = ACTIVE
+    v.setUint8(8, 3);  // mavlink_version
+    return new Uint8Array(b);
+  }
+  function encMissionCount(count, targetSys, targetComp){
+    const b = new ArrayBuffer(4); const v = new DataView(b);
+    v.setUint16(0, count, true); v.setUint8(2, targetSys); v.setUint8(3, targetComp);
+    return new Uint8Array(b);
+  }
+  function encMissionItem(seq, lat, lng, alt, frame, targetSys, targetComp, current){
+    const b = new ArrayBuffer(37); const v = new DataView(b);
+    v.setFloat32(0,0,true); v.setFloat32(4,0,true); v.setFloat32(8,0,true); v.setFloat32(12,0,true); // param1-4
+    v.setFloat32(16, lat, true); v.setFloat32(20, lng, true); v.setFloat32(24, alt, true); // x,y,z
+    v.setUint16(28, seq, true); v.setUint16(30, 16, true); // command = NAV_WAYPOINT
+    v.setUint8(32, targetSys); v.setUint8(33, targetComp); v.setUint8(34, frame);
+    v.setUint8(35, current?1:0); v.setUint8(36, 1); // autocontinue
+    return new Uint8Array(b);
+  }
+  function encSetMode(targetSys, customMode){
+    const b = new ArrayBuffer(6); const v = new DataView(b);
+    v.setUint32(0, customMode, true); v.setUint8(4, targetSys); v.setUint8(5, 1); // base_mode = custom enabled
+    return new Uint8Array(b);
+  }
+  function encCommandLong(targetSys, targetComp, command, p1,p2,p3,p4,p5,p6,p7, confirmation){
+    const b = new ArrayBuffer(33); const v = new DataView(b);
+    v.setFloat32(0,p1,true); v.setFloat32(4,p2,true); v.setFloat32(8,p3,true); v.setFloat32(12,p4,true);
+    v.setFloat32(16,p5,true); v.setFloat32(20,p6,true); v.setFloat32(24,p7,true);
+    v.setUint16(28, command, true); v.setUint8(30, targetSys); v.setUint8(31, targetComp); v.setUint8(32, confirmation||0);
+    return new Uint8Array(b);
+  }
+
+  const mav = {
+    port: null, reader: null, writer: null, connected: false,
+    seq: 0, sysid: 255, compid: 190, targetSys: 1, targetComp: 1,
+    rx: [], heartbeatTimer: null, missionUploadResolvers: null,
+  };
+
+  function fcSetStatus(state, text, sub){
+    const dot = document.getElementById('fcDot');
+    dot.className = 'fc-dot' + (state ? ' '+state : '');
+    document.getElementById('fcStatusText').textContent = text;
+    document.getElementById('fcStatusSub').textContent = sub || '';
+  }
+
+  async function mavSend(msgid, payload){
+    if (!mav.writer) return;
+    const packet = packMavlink(msgid, payload, mav.seq++, mav.sysid, mav.compid);
+    await mav.writer.write(packet);
+  }
+
+  function mavParseLoop(chunk){
+    for (let i=0;i<chunk.length;i++) mav.rx.push(chunk[i]);
+    while (true){
+      const stxIdx = mav.rx.indexOf(0xFE);
+      if (stxIdx === -1){ mav.rx = []; break; }
+      if (stxIdx > 0) mav.rx.splice(0, stxIdx);
+      if (mav.rx.length < 6) break; // need header
+      const len = mav.rx[1];
+      const total = 6 + len + 2;
+      if (mav.rx.length < total) break;
+      const packet = mav.rx.slice(0, total);
+      mav.rx.splice(0, total);
+      const seq = packet[2], sysid = packet[3], compid = packet[4], msgid = packet[5];
+      const payload = packet.slice(6, 6+len);
+      const crcRx = packet[6+len] | (packet[6+len+1] << 8);
+      const crcExtra = CRC_EXTRA[msgid];
+      if (crcExtra !== undefined){
+        const forCrc = new Uint8Array(1 + len + 1 + 3);
+        // len, seq, sysid, compid, msgid, payload..., crc_extra
+        const arr = [len, seq, sysid, compid, msgid, ...payload, crcExtra];
+        const crcCalc = x25crc(new Uint8Array(arr));
+        if (crcCalc !== crcRx) continue; // bad packet, skip
+      } else { continue; } // unknown message, ignore safely
+      handleMavMessage(msgid, payload, sysid, compid);
+    }
+  }
+
+  function handleMavMessage(msgid, payload, sysid, compid){
+    const v = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+    if (msgid === 0){ // HEARTBEAT
+      const type = v.getUint8(4);
+      const autopilot = v.getUint8(5);
+      if (!mav.connected){
+        mav.connected = true;
+        mav.targetSys = sysid; mav.targetComp = compid;
+        const names = {1:'Fixed wing',2:'Quadrotor',10:'Ground rover',13:'Hexarotor',14:'Octorotor'};
+        fcSetStatus('connected', 'Connected to ArduPilot', (names[type]||'Vehicle') + ` · sysid ${sysid}`);
+        document.getElementById('uploadMissionBtn').disabled = waypoints.length < 1;
+        document.getElementById('connectBtn').disabled = true;
+        document.getElementById('disconnectBtn').disabled = false;
+        setTelModeLabel(true);
+      }
+    } else if (msgid === 33){ // GLOBAL_POSITION_INT
+      const relAlt = v.getInt32(12, true) / 1000; // mm -> m
+      setTel({alt: relAlt.toFixed(1)});
+    } else if (msgid === 74){ // VFR_HUD
+      const groundspeed = v.getFloat32(4, true);
+      setTel({speed: groundspeed.toFixed(1)});
+    } else if (msgid === 40){ // MISSION_REQUEST -> FC asking for item
+      const seq = v.getUint16(0, true);
+      sendMissionItem(seq);
+    } else if (msgid === 47){ // MISSION_ACK
+      const type = v.getUint8(2);
+      const statusEl = document.getElementById('uploadStatus');
+      statusEl.textContent = type === 0 ? 'Mission accepted by flight controller ✓' : ('Mission upload failed (code '+type+')');
+      statusEl.style.color = type === 0 ? '#6BCB77' : '#E85D5D';
+    }
+  }
+
+  let pendingUpload = null;
+  function sendMissionItem(seq){
+    if (!pendingUpload) return;
+    const wp = pendingUpload[seq];
+    if (!wp) return;
+    const frame = seq === 0 ? 0 : 3; // home = absolute, rest = relative alt
+    mavSend(39, encMissionItem(seq, wp.lat, wp.lng, wp.alt, frame, mav.targetSys, mav.targetComp, seq===0?1:0));
+  }
+
+  document.getElementById('uploadMissionBtn').addEventListener('click', async () => {
+    if (!mav.connected || waypoints.length < 1) return;
+    pendingUpload = waypoints;
+    document.getElementById('uploadStatus').style.color = '#7C93A0';
+    document.getElementById('uploadStatus').textContent = 'Uploading ' + waypoints.length + ' item(s)…';
+    await mavSend(44, encMissionCount(waypoints.length, mav.targetSys, mav.targetComp));
+  });
+
+  document.getElementById('armBtn').addEventListener('click', async () => {
+    if (!mav.connected) return;
+    const vType = document.getElementById('vehicleType').value;
+    const modeNum = AUTO_MODE[vType];
+    // Arm
+    await mavSend(76, encCommandLong(mav.targetSys, mav.targetComp, 400, 1,0,0,0,0,0,0, 0));
+    // Small delay then set AUTO mode
+    setTimeout(async () => {
+      await mavSend(11, encSetMode(mav.targetSys, modeNum));
+    }, 800);
+  });
+
+  document.getElementById('safetyCheck').addEventListener('change', (e) => {
+    document.getElementById('armBtn').disabled = !e.target.checked || !mav.connected;
+  });
+
+  document.getElementById('connectBtn').addEventListener('click', async () => {
+    if (!('serial' in navigator)){
+      fcSetStatus('error', 'Web Serial not available', 'Open this file directly in Chrome/Edge on desktop');
+      return;
+    }
+    try{
+      fcSetStatus('connecting', 'Requesting port…', '');
+      const port = await navigator.serial.requestPort();
+      const baud = parseInt(document.getElementById('baudRate').value, 10);
+      await port.open({baudRate: baud});
+      mav.port = port;
+      mav.writer = port.writable.getWriter();
+      fcSetStatus('connecting', 'Waiting for heartbeat…', 'Listening for ArduPilot');
+
+      mav.heartbeatTimer = setInterval(() => { mavSend(0, encHeartbeat()); }, 1000);
+
+      const reader = port.readable.getReader();
+      mav.reader = reader;
+      (async function readLoop(){
+        try{
+          while (true){
+            const {value, done} = await reader.read();
+            if (done) break;
+            if (value) mavParseLoop(value);
+          }
+        }catch(err){
+          fcSetStatus('error', 'Connection lost', err.message || '');
+        }
+      })();
+    }catch(err){
+      fcSetStatus('error', 'Could not connect', err.message || 'Permission denied or no device selected');
+    }
+  });
+
+  document.getElementById('disconnectBtn').addEventListener('click', async () => {
+    try{
+      if (mav.heartbeatTimer) clearInterval(mav.heartbeatTimer);
+      if (mav.reader) { await mav.reader.cancel().catch(()=>{}); mav.reader.releaseLock(); }
+      if (mav.writer) { mav.writer.releaseLock(); }
+      if (mav.port) { await mav.port.close().catch(()=>{}); }
+    }catch(e){}
+    mav.connected = false; mav.port = null; mav.reader = null; mav.writer = null;
+    fcSetStatus('', 'Not connected', 'No flight controller detected');
+    document.getElementById('connectBtn').disabled = false;
+    document.getElementById('disconnectBtn').disabled = true;
+    document.getElementById('uploadMissionBtn').disabled = true;
+    document.getElementById('armBtn').disabled = true;
+    document.getElementById('safetyCheck').checked = false;
+    setTelModeLabel(false);
+    setTel({alt:0,speed:0,dist:0,eta:'--:--',batt:'100%'});
+  });
+
+  // Show/hide FC UI based on Web Serial support
+  if ('serial' in navigator){
+    document.getElementById('fcConnectedUI').style.display = 'block';
+  } else {
+    document.getElementById('fcUnsupported').style.display = 'block';
+  }
+
+  updateButtons();
+})();
+</script>
+</body>
+</html>
